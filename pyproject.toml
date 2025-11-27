@@ -1,0 +1,19 @@
+[project]
+name = "knowledge-distillation"
+version = "0.1.0"
+description = "This is our team project for CSC15006: Introduction to NLP"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "paddleocr>=3.3.2",
+    "paddlepaddle>=3.2.2",
+    "paddlex[ocr]>=3.3.10",
+    "pdf2image>=1.17.0",
+    "ppocrlabel>=3.1.4",
+    "pymupdf>=1.26.6",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
+    "transformers>=4.57.3",
+    "trash-cli>=0.24.5.26",
+    "vietocr>=0.3.13",
+]
