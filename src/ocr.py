@@ -39,6 +39,10 @@ class OCR:
         os.makedirs(cropped_img_folder_path, exist_ok=True)
 
         use_gpu = True if torch.cuda.is_available() else False
+        if use_gpu:
+            print("GPU is available. Using CUDA for computation.")
+        else:
+            print("GPU not available. Using CPU for computation.")
         config = Cfg.load_config_from_name('vgg_transformer')
         config['cnn']['pretrained'] = True
         config['predictor']['beamsearch'] = True

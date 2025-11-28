@@ -6,14 +6,22 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "paddleocr>=3.3.2",
-    "paddlepaddle>=3.2.2",
     "paddlex[ocr]>=3.3.10",
     "pdf2image>=1.17.0",
     "ppocrlabel>=3.1.4",
     "pymupdf>=1.26.6",
+    "ruff>=0.14.6",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
     "transformers>=4.57.3",
     "trash-cli>=0.24.5.26",
     "vietocr>=0.3.13",
+]
+
+[dependency-groups]
+cpu = [
+    "paddlepaddle>=3.2.2",
+]
+gpu = [
+    "paddlepaddle-gpu>=2.6.2",
 ]
