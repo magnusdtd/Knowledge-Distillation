@@ -1,8 +1,10 @@
 from src.ocr import OCR
 from src.preprocess import preprocess
+from src.split import split
 import argparse
 from tqdm import tqdm
 import os
+import glob
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run OCR pipeline Script')
@@ -18,6 +20,8 @@ def parse_args():
     parser.add_argument('--crop_img_folder', type=str, default='crop_img', help='Path to cropped image folder')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for OCR processing')
     parser.add_argument('--test', action='store_true', help='Run in testing mode, process only a small subset')
+    parser.add_argument('--split', action='store_true', help='Whether to split the dataset into subfolders')
+    parser.add_argument('--split_folder_names', nargs='+', default=["DamDat", "DoDat", "Bao", "Khoa"], help='List of folder names to use when splitting data')
     return parser.parse_args()
 
 def main(args):
@@ -42,27 +46,45 @@ def main(args):
     os.makedirs(os.path.dirname(rec_gt_file_path), exist_ok=True)
     os.makedirs(cropped_img_folder_path, exist_ok=True)
 
-    all_img_paths = preprocess(
-        chapter4pdf_path,
-        chapter12pdf_path,
-        chapter4img_path,
-        chapter12img_path,
-        chapter4text_path,
-        chapter12text_path,
-        fileState_file_path
-    )
+    if args.split:
+        # Collect image paths from chapter4img and chapter12img folder with prefixes
+        img_exts = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tiff']
+        chapter4_imgs = []
+        chapter12_imgs = []
+        for ext in img_exts:
+            chapter4_imgs.extend(
+                [p for p in glob.glob(os.path.join(chapter4img_path, ext)) if os.path.basename(p).startswith("chapter4_")])
+            chapter12_imgs.extend(
+                [p for p in glob.glob(os.path.join(chapter12img_path, ext)) if os.path.basename(p).startswith("chapter12_")])
+        img_paths_to_split = chapter4_imgs + chapter12_imgs
 
-    ocr = OCR(
-        label_file_path,
-        rec_gt_file_path,
-        cropped_img_folder_path
-    )
-    batch_size = args.batch_size
-    for start_idx in tqdm(range(0, len(all_img_paths), batch_size), desc="OCR Batches"):
-        ocr.predict(all_img_paths[start_idx: start_idx + batch_size])
-        if is_testing and (start_idx + batch_size) >= 8:
-            break
+        split(
+            img_paths_to_split, 
+            label_file_path, 
+            fileState_file_path, 
+            folder_names=args.split_folder_names
+        )
+    else:
+        all_img_paths = preprocess(
+            chapter4pdf_path,
+            chapter12pdf_path,
+            chapter4img_path,
+            chapter12img_path,
+            chapter4text_path,
+            chapter12text_path,
+            fileState_file_path
+        )
 
+        ocr = OCR(
+            label_file_path,
+            rec_gt_file_path,
+            cropped_img_folder_path
+        )
+        batch_size = args.batch_size
+        for start_idx in tqdm(range(0, len(all_img_paths), batch_size), desc="OCR Batches"):
+            ocr.predict(all_img_paths[start_idx: start_idx + batch_size])
+            if is_testing and (start_idx + batch_size) >= 8:
+                break 
 
 if __name__ == "__main__":
     args = parse_args()
