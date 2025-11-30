@@ -72,7 +72,6 @@ class OCR:
         """
         This function uses batch inference and writes results in PPOCRLabel format.
         """
-        print(f"[DEBUG] img_paths={img_paths}")
 
         # PaddleOCR - batch detection
         dec_result = self.detector.predict(img_paths)

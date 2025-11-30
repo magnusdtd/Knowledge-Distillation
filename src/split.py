@@ -15,7 +15,6 @@ def split(
     """
     k = len(folder_names)
     n = len(img_paths)
-    print(f"k={k}, n = {n}")
     assert k > 0, "folder_names should not be empty"
     assert n > 0, "img_paths is empty"
 
@@ -25,8 +24,8 @@ def split(
     # Read fileState_file
     with open(fileState_file_path, "r", encoding="utf-8") as f:
         fileState_lines = f.readlines()
-    assert len(label_lines) == len(img_paths), "label_file and img_paths size mismatch"
-    assert len(fileState_lines) == len(img_paths), "fileState_file and img_paths size mismatch"
+    assert len(label_lines) == len(img_paths), f"label_file ({len(label_lines)}) and img_paths ({len(img_paths)}) size mismatch"
+    assert len(fileState_lines) == len(img_paths), f"fileState_file ({len(fileState_lines)}) and img_paths ({len(img_paths)}) size mismatch"
 
     # Create subfolders and prepare content
     split_img_paths = [[] for _ in range(k)]
