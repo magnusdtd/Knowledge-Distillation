@@ -51,15 +51,14 @@ class OCR:
         self.detector = TextDetection()
 
     def __save_to_label_file(self, all_page_entries: dict):
-        mode = "a" if os.path.exists(self.label_file_path) else "w"
-        with open(self.label_file_path, mode, encoding="utf-8") as f:
+        # Always write fresh, not append. Overwrite the file.
+        with open(self.label_file_path, "w", encoding="utf-8") as f:
             for rel_img_path, entries in all_page_entries.items():
                 entries_serializable = convert_ndarray(entries)
                 f.write(f"{rel_img_path}\t{json.dumps(entries_serializable, ensure_ascii=False)}\n")
 
     def __save_to_rec_gt_file(self, all_page_entries: dict):
-        mode = "a" if os.path.exists(self.rec_gt_file_path) else "w"
-        with open(self.rec_gt_file_path, mode, encoding="utf-8") as f:
+        with open(self.rec_gt_file_path, "w", encoding="utf-8") as f:
             for img_idx, (img_path, entries) in enumerate(all_page_entries.items()):
                 prefix = extract_prefix(img_path)
                 for poly_idx, entry in enumerate(entries):
