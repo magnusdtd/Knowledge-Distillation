@@ -82,7 +82,7 @@ def main(args):
         )
         batch_size = args.batch_size
         for start_idx in tqdm(range(0, len(all_img_paths), batch_size), desc="OCR Batches"):
-            ocr.predict(all_img_paths[start_idx: start_idx + batch_size])
+            ocr.predict(all_img_paths[start_idx: start_idx + batch_size], batch_size = batch_size)
             if is_testing and (start_idx + batch_size) >= 8:
                 break 
 
