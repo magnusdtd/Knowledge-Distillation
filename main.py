@@ -57,6 +57,10 @@ def main(args):
             dataset_num_proc=args.dataset_num_proc,
             warmup_steps=args.warmup_steps,
             max_seq_length=args.max_seq_length,
+            project_name=args.project_name,
+            run_name=args.run_name,
+            resume=args.resume,
+            artifact_id=args.artifact_id,
         )
     elif args.mode == "eval":
         evaluate_model(

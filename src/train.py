@@ -36,6 +36,10 @@ def train(
     dataset_num_proc: int = 4,
     warmup_steps: int = 5,
     max_seq_length: int = 2048,
+    project_name: str = "",
+    run_name: str = "",
+    resume: bool = False,
+    artifact_id: str = "",
 ):    
     set_seed(seed)
 
@@ -43,6 +47,8 @@ def train(
     if wb_token:
         wandb.login(key=wb_token)
         report_to = "wandb"
+        os.environ["WANDB_PROJECT"] = project_name
+        os.environ["WANDB_LOG_MODEL"] = "checkpoint"
     else:
         report_to = "none"
 
@@ -115,6 +121,7 @@ def train(
             seed = seed,
             output_dir = "outputs",
             report_to = report_to,
+            run_name = run_name,
             fp16 = not is_bfloat16_supported(),
             bf16 = is_bfloat16_supported(),
             dataset_num_proc = dataset_num_proc,
@@ -152,7 +159,13 @@ def train(
         print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
         print(f"{start_gpu_memory} GB of memory reserved.")
 
-    trainer_stats = trainer.train()
+    if resume:
+        run = wandb.init()
+        artifact = run.use_artifact(artifact_id, type='model')
+        artifact_dir = artifact.download()
+        trainer.train(resume_from_checkpoint=artifact_dir)
+    else:
+        trainer_stats = trainer.train()
 
     # Show final memory and time stats (only on rank 0)
     if local_rank in [-1, 0]:

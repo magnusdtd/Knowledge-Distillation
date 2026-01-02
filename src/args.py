@@ -38,6 +38,8 @@ def parse_args():
     parser.add_argument("--dataset_num_proc", type=int, default=4, help="Number of processes for dataset")
     parser.add_argument("--warmup_steps", type=int, default=5, help="Number of warmup steps")
     parser.add_argument("--max_seq_length", type=int, default=2048, help="Maximum sequence length")
+    parser.add_argument("--project_name", type=str, default="", help="Project name for wandb")
+    parser.add_argument("--run_name", type=str, default="", help="Run name for wandb")
     
     # Evaluation Configuration
     parser.add_argument("--eval_batch_size", type=int, default=8, help="Batch size for evaluation mode")
@@ -54,6 +56,10 @@ def parse_args():
     parser.add_argument("--world_size", type=int, default=1, help="Total number of processes")
     parser.add_argument("--ddp", action="store_true", help="Enable DDP mode")
     
+    # Resume Training
+    parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
+    parser.add_argument("--artifact_id", type=str, default="", help="Wandb artifact ID for resuming training")
+
     args = parser.parse_args()
     
     # Auto-detect DDP from environment variables
