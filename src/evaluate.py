@@ -32,7 +32,8 @@ def _evaluate(
     time_limit: int = -1,
     initial_mem: float = 0,
     post_model_mem: float = 0,
-    dataset_name: str = "eval"
+    dataset_name: str = "eval",
+    max_new_tokens: int = 512,
 ):
 
     FastVisionModel.for_inference(model)
@@ -65,7 +66,7 @@ def _evaluate(
         print(f"Starting evaluation with batch size {batch_size}...")
 
     gen_kwargs = {
-        "max_new_tokens": 275,
+        "max_new_tokens": max_new_tokens,
         "use_cache": True,
         "temperature": 1.5,
         "min_p": 0.1,
@@ -268,7 +269,7 @@ def _evaluate(
             "model_memory_mb": model_mem_used,
             "gpu_name": gpu_name,
             "debug": {
-                "packages": json.loads(subprocess.check_output([sys.executable, "-m", "pip", "list", "--format=json"])),
+                "packages": "NONE",
                 "system": {
                     "python": platform.python_version(),
                     "os": platform.system(),
@@ -300,7 +301,8 @@ def evaluate_model(
     world_size: int = 1,
     ddp: bool = False,
     time_limit: int = -1,
-    eval_dataset: str = "aime_2024"
+    eval_dataset: str = "aime_2024",
+    max_new_tokens: int = 512,
 ):
     set_seed(seed)
     

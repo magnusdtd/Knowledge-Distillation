@@ -68,7 +68,8 @@ def main(args):
             world_size=args.world_size,
             ddp=args.ddp,
             time_limit=args.time_limit,
-            eval_dataset=args.eval_dataset
+            eval_dataset=args.eval_dataset,
+            max_new_tokens=args.max_new_tokens,
         )
     else:
         raise ValueError("Invalid script mode")

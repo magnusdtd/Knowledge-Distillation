@@ -46,6 +46,7 @@ def parse_args():
     parser.add_argument("--eval_dataset", type=str, default="aime_2024", 
                         choices=["aime_2024", "math_500"],
                         help="Benchmark dataset to evaluate on")
+    parser.add_argument("--max_new_tokens", type=int, default=512, help="Maximum number of new tokens to generate")
     
     # DDP Configuration
     parser.add_argument("--local_rank", type=int, default=-1, 
