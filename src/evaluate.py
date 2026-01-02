@@ -342,5 +342,6 @@ def evaluate_model(
         time_limit=time_limit,
         initial_mem=initial_mem,
         post_model_mem=post_model_mem,
-        dataset_name=eval_dataset
+        dataset_name=eval_dataset,
+        max_new_tokens=max_new_tokens,
     )
