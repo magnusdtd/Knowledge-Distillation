@@ -25,12 +25,6 @@ def get_train_val(
 
     return train_dataset, val_dataset
 
-def get_test():
-    """
-    Get test dataset (placeholder for future implementation).
-    """
-    pass
-
 
 def get_aime_2024():
     """

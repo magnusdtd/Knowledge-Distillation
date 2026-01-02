@@ -11,7 +11,6 @@ import subprocess
 import platform
 import sys
 
-from .dataset import get_test
 from .utils import set_seed
 from .math_utils import extract_boxed_answer, is_equiv
 from .dataset import get_aime_2024

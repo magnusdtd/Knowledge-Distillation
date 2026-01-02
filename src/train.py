@@ -46,9 +46,6 @@ def train(
     else:
         report_to = "none"
 
-    # Data
-    train_dataset, val_dataset = get_train_val(val_size)
-
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_id,
         max_seq_length = max_seq_length,
@@ -70,6 +67,9 @@ def train(
         use_rslora = False, 
         loftq_config = None, 
     )
+
+    # Data
+    train_dataset, val_dataset = get_train_val(val_size, tokenizer)
 
     def preprocess_logits_for_metrics(logits, labels):
         if isinstance(logits, tuple):
