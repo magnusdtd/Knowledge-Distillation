@@ -43,6 +43,9 @@ def parse_args():
     parser.add_argument("--eval_batch_size", type=int, default=8, help="Batch size for evaluation mode")
     parser.add_argument("--eval_num_workers", type=int, default=4, help="Number of workers for evaluation dataloader")
     parser.add_argument("--time_limit", type=int, default=-1, help="Time limit in seconds. -1 for no limit")
+    parser.add_argument("--eval_dataset", type=str, default="aime_2024", 
+                        choices=["aime_2024", "math_500"],
+                        help="Benchmark dataset to evaluate on")
     
     # DDP Configuration
     parser.add_argument("--local_rank", type=int, default=-1, 

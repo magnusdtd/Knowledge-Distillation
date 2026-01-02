@@ -67,7 +67,8 @@ def main(args):
             local_rank=args.local_rank,
             world_size=args.world_size,
             ddp=args.ddp,
-            time_limit=args.time_limit
+            time_limit=args.time_limit,
+            eval_dataset=args.eval_dataset
         )
     else:
         raise ValueError("Invalid script mode")

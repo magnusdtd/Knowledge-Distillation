@@ -3,7 +3,6 @@ import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.distributed as dist
-import evaluate
 import time
 import json
 import os
@@ -14,6 +13,10 @@ import sys
 
 from .dataset import get_test
 from .utils import set_seed
+from .math_utils import extract_boxed_answer, is_equiv
+from .dataset import get_aime_2024
+from .dataset import get_math_500
+
 
 def get_mem(): 
     return torch.cuda.memory_allocated() / (1024 ** 2) if torch.cuda.is_available() else 0
@@ -29,12 +32,10 @@ def _evaluate(
     ddp: bool = False,
     time_limit: int = -1,
     initial_mem: float = 0,
-    post_model_mem: float = 0
+    post_model_mem: float = 0,
+    dataset_name: str = "eval"
 ):
 
-    bleu = evaluate.load("bleu")
-    rouge = evaluate.load("rouge")
-    meteor = evaluate.load("meteor")
     FastVisionModel.for_inference(model)
     
     tokenizer.padding_side = "left" 
@@ -87,6 +88,10 @@ def _evaluate(
     accumulated_references = []
     predictions_with_metadata = []  # Store predictions with index, img_id, question
     start_index = 0
+    
+    # Track Pass@1 metrics
+    correct_count = 0
+    total_count = 0
 
     if os.path.exists(checkpoint_file):
         print(f"Rank {local_rank}: Found checkpoint {checkpoint_file}, resuming...")
@@ -95,14 +100,11 @@ def _evaluate(
             accumulated_predictions = data.get("predictions", [])
             accumulated_references = data.get("references", [])
             predictions_with_metadata = data.get("predictions_with_metadata", [])
+            correct_count = data.get("correct_count", 0)
+            total_count = data.get("total_count", 0)
             start_index = len(accumulated_predictions)
         
-        # Load previous results into metrics
         print(f"Rank {local_rank}: Loaded {start_index} previous results.")
-        if len(accumulated_predictions) > 0:
-            bleu.add_batch(predictions=accumulated_predictions, references=[[r] for r in accumulated_references])
-            rouge.add_batch(predictions=accumulated_predictions, references=accumulated_references)
-            meteor.add_batch(predictions=accumulated_predictions, references=accumulated_references)
 
     # Calculate batches to skip
     batches_to_skip = math.ceil(start_index / batch_size)
@@ -122,7 +124,9 @@ def _evaluate(
                 json.dump({
                     "predictions": accumulated_predictions,
                     "references": accumulated_references,
-                    "predictions_with_metadata": predictions_with_metadata
+                    "predictions_with_metadata": predictions_with_metadata,
+                    "correct_count": correct_count,
+                    "total_count": total_count
                 }, f)
 
         batch_images = []
@@ -138,22 +142,17 @@ def _evaluate(
             img_id = item.get("img_id", f"img_{global_idx}")
 
             messages = [
-                {"role": "user", "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": question_text}
-                ]}
+                {"role": "user", "content": question_text}
             ]
 
             text_input = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
             batch_prompts.append(text_input)
-            batch_images.append(user_msg[1]["image"])
             batch_references.append(reference_text)
             batch_questions.append(question_text)
             batch_img_ids.append(img_id)
         
         inputs = tokenizer(
             text=batch_prompts,
-            images=batch_images,
             return_tensors="pt",
             padding=True,
         ).to(device)
@@ -171,9 +170,24 @@ def _evaluate(
         batch_predictions = [pred.strip() for pred in batch_predictions]  
         batch_references = [ref.strip() for ref in batch_references]
 
-        bleu.add_batch(predictions=batch_predictions, references=[[r] for r in batch_references])
-        rouge.add_batch(predictions=batch_predictions, references=batch_references)
-        meteor.add_batch(predictions=batch_predictions, references=batch_references)
+        # Compute Pass@1 for this batch
+        for pred, ref in zip(batch_predictions, batch_references):
+            # Extract boxed answers
+            pred_answer = extract_boxed_answer(pred)
+            ref_answer = extract_boxed_answer(ref)
+            
+            # If we couldn't extract from reference, use the whole reference
+            if ref_answer is None:
+                ref_answer = ref
+            
+            # If we couldn't extract from prediction, use the whole prediction
+            if pred_answer is None:
+                pred_answer = pred
+            
+            # Check if answers are equivalent
+            if is_equiv(pred_answer, ref_answer):
+                correct_count += 1
+            total_count += 1
 
         # Accumulate for checkpointing
         accumulated_predictions.extend(batch_predictions)
@@ -196,7 +210,9 @@ def _evaluate(
         
         # Gather predictions_with_metadata from all ranks to rank 0
         gathered_predictions = [None] * world_size
+        gathered_metrics = [None] * world_size
         dist.all_gather_object(gathered_predictions, predictions_with_metadata)
+        dist.all_gather_object(gathered_metrics, {"correct": correct_count, "total": total_count})
         
         if local_rank == 0:
             all_predictions = []
@@ -205,27 +221,23 @@ def _evaluate(
             all_predictions.sort(key=lambda x: x['index'])
             predictions_with_metadata = all_predictions
             
+            # Aggregate metrics from all ranks
+            total_correct = sum(m["correct"] for m in gathered_metrics)
+            total_total = sum(m["total"] for m in gathered_metrics)
+            correct_count = total_correct
+            total_count = total_total
+            
             print(f"Gathered {len(predictions_with_metadata)} predictions from {world_size} ranks")
     
     # Compute metrics and save JSON only on rank 0
     if local_rank in [-1, 0]:
-        bleu_result = bleu.compute()
-        rouge_result = rouge.compute()
-        meteor_result = meteor.compute()
-        
-        # Calculate public scores
-        bleu_score = round(bleu_result['bleu'], 4)
-        rouge1_score = round(float(rouge_result['rouge1']), 4)
-        rouge2_score = round(float(rouge_result['rouge2']), 4)
-        rougeL_score = round(float(rouge_result['rougeL']), 4)
-        meteor_score = round(float(meteor_result['meteor']), 4)
+        # Calculate Pass@1
+        pass_at_1 = correct_count / total_count if total_count > 0 else 0.0
         
         public_scores = {
-            'bleu': bleu_score,
-            'rouge1': rouge1_score,
-            'rouge2': rouge2_score,
-            'rougeL': rougeL_score,
-            'meteor': meteor_score
+            'pass@1': round(pass_at_1, 4),
+            'correct': correct_count,
+            'total': total_count
         }
         
         print("✨Public scores: ", public_scores)
@@ -267,8 +279,8 @@ def _evaluate(
             }
         }
         
-        # Save to JSON file
-        output_file = "predictions_eval.json"
+        # Save to JSON file with dataset name
+        output_file = f"predictions_eval_{dataset_name}.json"
         with open(output_file, "w") as f:
             json.dump(output_data, f, indent=4)
         
@@ -288,7 +300,8 @@ def evaluate_model(
     local_rank: int = -1,
     world_size: int = 1,
     ddp: bool = False,
-    time_limit: int = -1
+    time_limit: int = -1,
+    eval_dataset: str = "aime_2024"
 ):
     set_seed(seed)
     
@@ -304,7 +317,17 @@ def evaluate_model(
     # Track memory after model loading
     post_model_mem = get_mem()
 
-    test_dataset = get_test()
+    # Load the appropriate dataset based on eval_dataset argument
+    if eval_dataset == "aime_2024":
+        test_dataset = get_aime_2024()
+        if local_rank in [-1, 0]:
+            print(f"Loaded AIME 2024 dataset with {len(test_dataset)} problems")
+    elif eval_dataset == "math_500":
+        test_dataset = get_math_500()
+        if local_rank in [-1, 0]:
+            print(f"Loaded MATH-500 dataset with {len(test_dataset)} problems")
+    else:
+        raise ValueError(f"Unknown eval_dataset: {eval_dataset}")
 
     _evaluate(
         model, 
@@ -317,5 +340,6 @@ def evaluate_model(
         ddp=ddp,
         time_limit=time_limit,
         initial_mem=initial_mem,
-        post_model_mem=post_model_mem
+        post_model_mem=post_model_mem,
+        dataset_name=eval_dataset
     )
