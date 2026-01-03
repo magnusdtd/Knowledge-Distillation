@@ -13,3 +13,5 @@ raw/*
 !Readme.md
 crop_img/*
 txt/*
+
+datasets/*

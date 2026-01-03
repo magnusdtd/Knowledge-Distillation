@@ -1,37 +1,18 @@
 [project]
-name = "knowledge-distillation"
+name = "distilling-step-by-step"
 version = "0.1.0"
-description = "This is our team project for CSC15006: Introduction to NLP"
+description = "Add your description here"
 readme = "README.md"
-requires-python = "==3.11.*" 
+requires-python = ">=3.12"
 dependencies = [
-    "matplotlib-inline",
-    "paddleocr",
-    "paddlex",
-    "pdf2image",
-    "ppocrlabel",
-    "pymupdf",
-    "ruff",
-    "trash-cli",
-    "vietocr",
-    "torch",
-    "torchvision",
-    "paddlepaddle",
+    "accelerate>=0.26.0",
+    "datasets>=4.4.2",
+    "hf-xet>=1.2.0",
+    "numpy>=2.4.0",
+    "pandas>=2.3.3",
+    "protobuf>=6.33.2",
+    "sentencepiece>=0.2.1",
+    "torch>=2.9.1",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.3",
 ]
-
-[[tool.uv.index]]
-name = "paddle-source"
-url = "https://www.paddlepaddle.org.cn/packages/stable/cu118/"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu118" }
-torchvision = { index = "pytorch-cu118" }
-
-[tool.uv]
-environments = ["sys_platform == 'linux'"]

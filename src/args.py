@@ -1,71 +1,29 @@
 import argparse
-import os
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="[Knowledge Distillation] Qwen2.5-Math-7B Train/Evaluation/Inference Script")
-
-    # Mode
-    parser.add_argument("--mode", type=str, default="train", choices=["train", "eval"], help="Mode of the script")
-    
-    # Model Configuration
-    parser.add_argument("--model_id", type=str, default="Qwen/Qwen2.5-Math-7B-Instruct",     
-                        help="Model ID for training")
-    parser.add_argument("--eval_model_id", type=str, default="Qwen/Qwen2.5-Math-7B-Instruct",
-                        help="Model ID for evaluation")
-    
-    # Save Configuration
-    parser.add_argument("--save_dir", type=str, default="Qwen2.5-Math-7B-Instruct-KD",
-                        help="Directory to save the model")
-    parser.add_argument("--save_repo_id", type=str, default="magnusdtd/Qwen2.5-Math-7B-Instruct-KD",
-                        help="HuggingFace repository ID to push the model")
-    parser.add_argument("--hf_token", type=str, default="", help="HuggingFace token for pushing models")
-    parser.add_argument("--wb_token", type=str, default="", help="Weights & Biases token for logging training metrics")
-    
-    # Training Hyperparameters
-    parser.add_argument("--val_size", type=float, default=0.01, help="Validation split size")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Training batch size per device")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="Gradient accumulation steps")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8, help="Evaluation batch size per device")
-    parser.add_argument("--eval_accumulation_steps", type=int, default=4, help="Evaluation accumulation steps")
-    parser.add_argument("--max_steps", type=int, default=1000, help="Maximum training steps")
-    parser.add_argument("--num_train_epochs", type=int, default=1, help="Number of training epochs")
-    parser.add_argument("--save_steps", type=int, default=100, help="Save checkpoint every N steps")
-    parser.add_argument("--eval_steps", type=int, default=100, help="Evaluate every N steps")
-    parser.add_argument("--early_stopping_patience", type=int, default=5, help="Early stopping patience")
-    parser.add_argument("--seed", type=int, default=3407, help="Random seed")
-    parser.add_argument("--logging_steps", type=int, default=1, help="Logging steps")
-    parser.add_argument("--dataset_num_proc", type=int, default=4, help="Number of processes for dataset")
-    parser.add_argument("--warmup_steps", type=int, default=5, help="Number of warmup steps")
-    parser.add_argument("--max_seq_length", type=int, default=2048, help="Maximum sequence length")
-    parser.add_argument("--project_name", type=str, default="", help="Project name for wandb")
-    parser.add_argument("--run_name", type=str, default="", help="Run name for wandb")
-    
-    # Evaluation Configuration
-    parser.add_argument("--eval_batch_size", type=int, default=8, help="Batch size for evaluation mode")
-    parser.add_argument("--eval_num_workers", type=int, default=4, help="Number of workers for evaluation dataloader")
-    parser.add_argument("--time_limit", type=int, default=-1, help="Time limit in seconds. -1 for no limit")
-    parser.add_argument("--eval_dataset", type=str, default="aime_2024", 
-                        choices=["aime_2024", "math_500"],
-                        help="Benchmark dataset to evaluate on")
-    parser.add_argument("--max_new_tokens", type=int, default=512, help="Maximum number of new tokens to generate")
-    
-    # DDP Configuration
-    parser.add_argument("--local_rank", type=int, default=-1, 
-                        help="Local rank for distributed training")
-    parser.add_argument("--world_size", type=int, default=1, help="Total number of processes")
-    parser.add_argument("--ddp", action="store_true", help="Enable DDP mode")
-    
-    # Resume Training
-    parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
-    parser.add_argument("--artifact_id", type=str, default="", help="Wandb artifact ID for resuming training")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--subsample', type=float, default=1.0)
+    parser.add_argument('--alpha', type=float, default=0.5)
+    parser.add_argument('--max_steps', type=int, default=10000)
+    parser.add_argument('--eval_steps', type=int, default=250)
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--optimizer_name', type=str, default='AdamW')
+    parser.add_argument('--lr', type=float, default=5e-5)
+    parser.add_argument('--run', type=int, default=0)
+    parser.add_argument('--from_pretrained', type=str, default='google/t5-v1_1-base')
+    parser.add_argument('--label_type', type=str, default='gt')
+    parser.add_argument('--llm', type=str, default='palm')
+    parser.add_argument('--max_input_length', type=int, default=1024)
+    parser.add_argument('--grad_steps', type=int, default=1)
+    parser.add_argument('--local_rank', type=int, default=-1)
+    parser.add_argument('--gen_max_len', type=int, default=64)
+    parser.add_argument('--parallelize', action='store_true')
+    parser.add_argument('--model_type', type=str, default='task_prefix')
+    parser.add_argument('--bf16', action='store_true')
+    parser.add_argument('--no_log', action='store_true')
+    parser.add_argument('--output_rationale', action='store_true')
 
     args = parser.parse_args()
-    
-    # Auto-detect DDP from environment variables
-    if "LOCAL_RANK" in os.environ:
-        args.local_rank = int(os.environ["LOCAL_RANK"])
-        args.world_size = int(os.environ.get("WORLD_SIZE", 1))
-        args.ddp = True
-    
+
     return args

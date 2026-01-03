@@ -1,86 +1,186 @@
-import os
-import torch
-import torch.distributed as dist
-from src.evaluate import evaluate_model
+from datasets import DatasetDict, concatenate_datasets
+from transformers import AutoTokenizer
 from src.args import parse_args
-from src.train import train
-
-
-def setup_ddp(args):
-    """Initialize DDP if enabled"""
-    if args.ddp:
-        # Initialize the process group
-        dist.init_process_group(backend="nccl")
-        
-        # Set the device for this process
-        torch.cuda.set_device(args.local_rank)
-        
-        if args.local_rank == 0:
-            print(f"DDP initialized with world_size={args.world_size}")
-    else:
-        if args.local_rank == 0 or args.local_rank == -1:
-            print("Running in single-GPU mode")
-
-
-def cleanup_ddp(args):
-    """Cleanup DDP if enabled"""
-    if args.ddp:
-        dist.destroy_process_group()
+from src.data_utils import CQADatasetLoader, SVAMPDatasetLoader, ESNLIDatasetLoader, ANLI1DatasetLoader, ASDivDatasetLoader
+from src.metrics import compute_text_acc, compute_equation_acc, compute_metrics_text, compute_metrics_equation, compute_metrics_text_aux, compute_metrics_equation_aux
+from src.train_utils import train_and_evaluate
 
 
 def main(args):
-    # Setup DDP
-    setup_ddp(args)
+    #### Prepare datasets
+    if args.dataset == 'cqa':
+        dataset_loader = CQADatasetLoader()
+    elif args.dataset == 'svamp':
+        dataset_loader = SVAMPDatasetLoader()
+    elif args.dataset == 'esnli':
+        dataset_loader = ESNLIDatasetLoader()
+    elif args.dataset == 'anli1':
+        dataset_loader = ANLI1DatasetLoader()
+    elif args.dataset == 'asdiv':  # NOTE: for augmenting SVAMP only
+        dataset_loader = SVAMPDatasetLoader()
+        dataset_loader_svamp = SVAMPDatasetLoader()
+        dataset_loader_asdiv = ASDivDatasetLoader()
+    else:
+        raise ValueError
 
-    if args.mode == "train":
-        train(
-            model_id=args.model_id,
-            save_dir=args.save_dir,
-            save_repo_id=args.save_repo_id,
-            hf_token=args.hf_token,
-            wb_token=args.wb_token,
-            val_size=args.val_size,
-            per_device_train_batch_size=args.per_device_train_batch_size,
-            gradient_accumulation_steps=args.gradient_accumulation_steps,
-            per_device_eval_batch_size=args.per_device_eval_batch_size,
-            eval_accumulation_steps=args.eval_accumulation_steps,
-            max_steps=args.max_steps,
-            num_train_epochs=args.num_train_epochs,
-            save_steps=args.save_steps, 
-            eval_steps=args.eval_steps,
-            early_stopping_patience=args.early_stopping_patience, 
-            seed=args.seed,
-            local_rank=args.local_rank,
-            world_size=args.world_size,
-            ddp=args.ddp,
-            logging_steps=args.logging_steps,
-            dataset_num_proc=args.dataset_num_proc,
-            warmup_steps=args.warmup_steps,
-            max_seq_length=args.max_seq_length,
-            project_name=args.project_name,
-            run_name=args.run_name,
-            resume=args.resume,
-            artifact_id=args.artifact_id,
+    if args.dataset == 'asdiv':
+        datasets_svamp = dataset_loader_svamp.load_from_json()
+        datasets_asdiv = dataset_loader_asdiv.load_from_json()
+        datasets = DatasetDict({
+            'train': concatenate_datasets([datasets_svamp['train'], datasets_asdiv['train']]),
+            'test': datasets_svamp['test']
+        })
+    else:
+        datasets = dataset_loader.load_from_json()
+
+    if args.llm is None:
+        pass
+    elif args.llm == 'palm':
+        if args.dataset == 'asdiv':
+            # training set = SVAMP training + ASDiv training
+            train_llm_rationales_svamp, train_llm_labels_svamp = dataset_loader_svamp.load_llm_preds(split='train')
+            train_llm_rationales_asdiv, train_llm_labels_asdiv = dataset_loader_asdiv.load_llm_preds(split='train')
+            train_llm_rationales = train_llm_rationales_svamp + train_llm_rationales_asdiv
+            train_llm_labels = train_llm_labels_svamp + train_llm_labels_asdiv
+            # test set = SVAMP test
+            test_llm_rationales, test_llm_labels = dataset_loader_svamp.load_llm_preds(split='test')
+        else:
+            train_llm_rationales, train_llm_labels = dataset_loader.load_llm_preds(split='train')
+            test_llm_rationales, test_llm_labels = dataset_loader.load_llm_preds(split='test')
+    elif args.llm == 'gpt':
+        train_llm_rationales, train_llm_labels = dataset_loader.load_gpt_preds(split='train')
+        test_llm_rationales, test_llm_labels = dataset_loader.load_gpt_preds(split='test')
+    else:
+        raise ValueError
+
+    if args.llm is not None:
+        datasets['train'] = datasets['train'].add_column('llm_label', train_llm_labels)
+        datasets['test'] = datasets['test'].add_column('llm_label', test_llm_labels)
+        datasets['train'] = datasets['train'].add_column('llm_rationale', train_llm_rationales)
+        datasets['test'] = datasets['test'].add_column('llm_rationale', test_llm_rationales)
+
+    if args.subsample < 1.0:
+        datasets['train'] = datasets['train'].train_test_split(test_size=1.0-args.subsample, seed=args.run)['train']
+
+    if dataset_loader.has_valid:
+        if args.llm is None:
+            pass
+        elif args.llm == 'palm':
+            valid_llm_rationales, valid_llm_labels = dataset_loader.load_llm_preds(split='valid')
+        elif args.llm == 'gpt':
+            valid_llm_rationales, valid_llm_labels = dataset_loader.load_gpt_preds(split='valid')
+        else:
+            raise ValueError
+
+        datasets['valid'] = datasets['valid'].add_column('llm_label', valid_llm_labels)
+        datasets['valid'] = datasets['valid'].add_column('llm_rationale', valid_llm_rationales)
+    else:
+        train_valid_datasets = datasets['train'].train_test_split(test_size=0.1, seed=0)
+
+        datasets = DatasetDict({
+            'train': train_valid_datasets['train'],
+            'valid': train_valid_datasets['test'],
+            'test': datasets['test'],
+        })
+
+    if args.label_type == 'gt':
+        pass
+    elif args.label_type == 'llm' and args.llm is not None:
+        if args.dataset not in ['svamp', 'asdiv']:
+            train_label_acc = compute_text_acc(datasets['train']['llm_label'], datasets['train']['label'])
+            test_label_acc = compute_text_acc(datasets['test']['llm_label'], datasets['test']['label'])
+        else:
+            train_label_acc = compute_equation_acc(datasets['train']['llm_label'], datasets['train']['label'])
+            test_label_acc = compute_equation_acc(datasets['test']['llm_label'], datasets['test']['label'])
+
+        print(f'LLM Train Acc: {train_label_acc:.4f}')
+        print(f'LLM Test Acc: {test_label_acc:.4f}')
+
+        datasets['train'] = datasets['train'].remove_columns('label')
+        datasets['train'] = datasets['train'].add_column('label', datasets['train']['llm_label'])
+
+    else:
+        raise ValueError
+
+    if args.llm is not None:
+        if 'rationale' in datasets['train'].column_names:
+            datasets = datasets.remove_columns('rationale')
+        datasets = datasets.rename_column('llm_rationale', 'rationale')
+
+
+    #### Prepare datasets Prepare data for training
+    tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained)
+
+    if 'nli' in args.dataset:
+        datasets = datasets.map(
+            lambda example: {'input': tokenizer.eos_token.join([example['premise'], example['hypothesis']])},
+            remove_columns=['premise', 'hypothesis'],
         )
-    elif args.mode == "eval":
-        evaluate_model(
-            model_id=args.eval_model_id,
-            batch_size=args.eval_batch_size,
-            num_workers=args.eval_num_workers,
-            seed=args.seed,
-            local_rank=args.local_rank,
-            world_size=args.world_size,
-            ddp=args.ddp,
-            time_limit=args.time_limit,
-            eval_dataset=args.eval_dataset,
-            max_new_tokens=args.max_new_tokens,
+
+
+    if args.model_type == 'task_prefix' and args.llm is not None:
+        def tokenize_function(examples):
+            model_inputs = tokenizer(['predict: ' + text for text in examples['input']], max_length=args.max_input_length, truncation=True)
+            expl_model_inputs = tokenizer(['explain: ' + text for text in examples['input']], max_length=args.max_input_length, truncation=True)
+            model_inputs['expl_input_ids'] = expl_model_inputs['input_ids']
+            model_inputs['expl_attention_mask'] = expl_model_inputs['attention_mask']
+
+            label_output_encodings = tokenizer(text_target=examples['label'], max_length=256, truncation=True)
+            rationale_output_encodings = tokenizer(text_target=examples['rationale'], max_length=256, truncation=True)
+
+            model_inputs['labels'] = label_output_encodings['input_ids']
+            model_inputs['aux_labels'] = rationale_output_encodings['input_ids']
+
+            return model_inputs
+
+    elif args.model_type == 'standard':
+        def tokenize_function(examples):
+            model_inputs = tokenizer(
+                examples['input'],
+                max_length=args.max_input_length,
+                truncation=True
+            )
+
+            label_output_encodings = tokenizer(text_target=examples['label'], max_length=256, truncation=True)
+
+            model_inputs['labels'] = label_output_encodings['input_ids']
+
+            return model_inputs
+
+    else:
+        raise ValueError
+
+
+    if args.llm is None:
+        tokenized_datasets = datasets.map(
+            tokenize_function,
+            remove_columns=['input', 'label'],
+            batched=True
         )
     else:
-        raise ValueError("Invalid script mode")
-    
-    # Cleanup DDP
-    cleanup_ddp(args)
+        tokenized_datasets = datasets.map(
+            tokenize_function,
+            remove_columns=['input', 'rationale', 'label', 'llm_label'],
+            batched=True
+        )
 
 
-if __name__ == "__main__":
-    main(parse_args())
+    if args.model_type == 'standard':
+        if args.dataset not in ['svamp', 'asdiv']:
+            compute_metrics = compute_metrics_text_aux(tokenizer)
+        else:
+            compute_metrics = compute_metrics_equation_aux(tokenizer)
+
+    else:
+        if args.dataset not in ['svamp', 'asdiv']:
+            compute_metrics = compute_metrics_text(tokenizer)
+        else:
+            compute_metrics = compute_metrics_equation(tokenizer)
+
+
+    train_and_evaluate(args, args.run, tokenizer, tokenized_datasets, compute_metrics)
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    main(args)
