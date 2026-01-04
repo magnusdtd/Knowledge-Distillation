@@ -1,6 +1,6 @@
-# Distilling Step-by-Step!
+This is the reproducible code for paper [Distilling Step-by-Step! Outperforming Larger Language Models with Less Training Data and Smaller Model Sizes](https://arxiv.org/abs/2305.02301)
 
-Code for paper [Distilling Step-by-Step! Outperforming Larger Language Models with Less Training Data and Smaller Model Sizes](https://arxiv.org/abs/2305.02301)
+We have fixed some issues in the original code. 
 
 ## Environment Setup
 - Setup environment with [uv](https://docs.astral.sh/uv/), a fast package manager for python:
@@ -57,3 +57,6 @@ python run.py --from_pretrained google/t5-v1_1-base --dataset cqa --model_type s
 ```python
 python run.py --from_pretrained google/t5-v1_1-base --dataset cqa --model_type task_prefix --label_type llm --llm palm --alpha 0.5 --batch_size 64
 ```
+
+## Notebooks
+We have provided a notebook to run the code in Kaggle.
